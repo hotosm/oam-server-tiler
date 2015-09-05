@@ -1,0 +1,32 @@
+{
+  "jobId" : "nepal_1",
+  "target" : "s3://hotosm-oam-tiles/nepal_1",
+  "input" : [
+    { 
+      "cellSize" : {
+        "width" : 1234.4321,
+        "height" : 6789.9876
+      },
+      "extent" : {
+        "xmin" : -123.4324,
+        "ymin" : -123.4324,
+        "xmax" : 123.4324,
+        "ymax" : 123.4324
+      },
+      "images" : "s3://workspace-oam-hotosm-org/image1/chunked"
+    },
+    { 
+      "cellSize" : {
+        "width" : 234.4321,
+        "height" : 789.9876
+      },
+      "extent" : {
+        "xmin" : -123.4324,
+        "ymin" : -123.4324,
+        "xmax" : 123.4324,
+        "ymax" : 123.4324
+      },
+      "images" : "s3://workspace-oam-hotosm-org/image2/chunked"
+    }
+  ]
+}
