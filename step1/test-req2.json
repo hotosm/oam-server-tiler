@@ -1,0 +1,14 @@
+{
+  "jobId" : "test-job",
+  "target" : "/Users/rob/proj/oam/data/results",
+  "images" : [
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-5.tif",
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-6.tif",
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-7.tif",
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-8.tif",
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-9.tif",
+    "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/LC81410412014277LGN00_bands_432.TIF"
+  ],
+  "workspace" : "/Users/rob/proj/oam/data/workspace"
+}
+

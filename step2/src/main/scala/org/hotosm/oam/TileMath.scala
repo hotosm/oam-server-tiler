@@ -5,6 +5,7 @@ import geotrellis.spark.tiling._
 
 object TileMath {
   val TILE_DIM = 256
+  val BAND_COUNT = 3
   val LAYOUT_SCHEME = ZoomedLayoutScheme(TILE_DIM)
   val WORLD_EXTENT = Extent(-20037508.342789244, -20037508.342789244, 20037508.342789244, 20037508.342789244)
   val WORLD_WIDTH = 20026376.39 * 2

@@ -1,12 +1,16 @@
 package org.hotosm.oam
 
+import org.hotosm.oam.io._
+
 import org.apache.spark._
 import org.apache.spark.rdd._
 
 import geotrellis.raster._
+import geotrellis.raster.resample._
 import geotrellis.raster.mosaic._
 import geotrellis.raster.io.geotiff._
 import geotrellis.vector._
+import geotrellis.vector.reproject._
 import geotrellis.proj4._
 import geotrellis.spark._
 import geotrellis.spark.tiling._
@@ -19,116 +23,162 @@ import spray.json._
 import spire.syntax.cfor._
 
 object Tiler {
+  def getUpperLeft(zoom: Int, col: Int, row: Int) = {
+    val n = math.pow(2, zoom)
+    val long = ((col / n) * 360.0) - 180.0
+    val lat = math.toDegrees(math.atan(math.sinh(math.Pi * (1 - 2 * row / n))))
+    (long, lat)
+  }
+
+  def getExtent(zoom: Int, col: Int, row: Int) = {
+    val (xmin, ymax) = getUpperLeft(zoom, col, row)
+    val (xmax, ymin) = getUpperLeft(zoom, col + 1, row + 1)
+    Extent(xmin, ymin, xmax, ymax)
+  }
+
   def getSparkContext(): SparkContext = {
     val conf = 
       new SparkConf()
-        .setMaster("local[*]")
+//        .setMaster("local[8]")
         .setAppName("HOT OSM Open Aerial Map Tiler")
 
     new SparkContext(conf)
   }
 
-  implicit class CutTileWrapper(images: RDD[(Extent, MultiBandTile)]) {
-    def cutTiles(zoomExtents: ZoomExtents): Seq[(Int, RDD[(SpatialKey, MultiBandTile)])] =
-      zoomExtents.mapZooms { (z, mapTransform, multiPolygon) =>
-        val tiles = 
-          images
-            .flatMap { case (extent, image) =>
-              extent.safeIntersection(multiPolygon).asMultiPolygon.map { intersectionPolygons =>
-                intersectionPolygons.polygons.toSeq.flatMap { polygon =>
-                  mapTransform(polygon.envelope)
-                    .coords
-                    .map  { case (col, row) =>
-                      val arr = Array.ofDim[ArrayTile](image.bandCount)
-                      cfor(0)(_ < image.bandCount, _ + 1) { b =>
-                        arr(b) = ArrayTile.empty(image.cellType, TileMath.TILE_DIM, TileMath.TILE_DIM)
-                        arr(b).merge(mapTransform(col, row), extent, image.band(b))
-                      }
-
-                      (SpatialKey(col, row), ArrayMultiBandTile(arr): MultiBandTile)
-                  }
-                }
-              }
-            }
-            .flatMap(identity)
-
-        (z, tiles)
-      }
-  }
-
   implicit class SaveWrapper(images: RDD[(SpatialKey, OrderedImage)]) {
     def save(zoom: Int, sink: (Int, SpatialKey, MultiBandTile) => Unit): RDD[(SpatialKey, OrderedImage)] =
       images.mapPartitions({ partition =>
-        for(e @ (key, OrderedImage(tile, _)) <- partition) {
+        for(e @ (key, OrderedImage(tile, _)) <- partition) yield {
           sink(zoom, key, tile)
+          e
         }
-        partition
       }, preservesPartitioning = true)
+    // def save(zoom: Int, sink: (Int, SpatialKey, MultiBandTile) => Unit): Unit =
+    //   images.foreach { case (key, OrderedImage(tile, _)) =>
+    //     sink(zoom, key, tile)
+    //   }
+  }
+
+  object ZoomWrapper {
+    private val threshold = 0.0000001
+    def mergeImage(nextTile: Array[MutableArrayTile], thisTile: MultiBandTile, nextExtent: Extent, thisExtent: Extent): Unit =
+      nextExtent & thisExtent match {
+        case Some(intersection) =>
+          val re = RasterExtent(thisExtent, TileMath.TILE_DIM, TileMath.TILE_DIM)
+          val dx = re.cellwidth / 2
+          val dy = re.cellheight / 2
+          val colMin =
+            if(thisExtent.xmin - nextExtent.xmin > threshold) { TileMath.TILE_DIM / 2 } else { 0 }
+
+          val colLim =
+            if(colMin == 0) { TileMath.TILE_DIM / 2 } else { TileMath.TILE_DIM }
+
+          val rowMin =
+            if(nextExtent.ymax - thisExtent.ymax > threshold) { TileMath.TILE_DIM / 2 } else { 0 }
+
+          val rowLim =
+            if(rowMin == 0) { TileMath.TILE_DIM / 2 } else { TileMath.TILE_DIM }
+
+          cfor(0)(_ < TileMath.BAND_COUNT, _ + 1) { b =>
+            val targetBand = nextTile(b)
+            val resampleTile =
+              thisTile.band(b).convert(TypeShort)
+                .map { z => 
+                  if(isNoData(z)) { 128 }
+                  else if(z == 0) { NODATA }
+                  else { z.toByte & 0xFF }
+                }
+            val resampler = Resample(Bilinear, resampleTile, thisExtent)
+            cfor(rowMin)(_ < rowLim, _ + 1) { row =>
+              cfor(colMin)( _ < colLim, _ + 1) { col =>
+                val (x, y) = re.gridToMap((col - colMin) * 2, (row - rowMin) * 2)
+                targetBand.set(col, row, resampler.resample(x + dx, y + dy) & 0xFF)
+              }
+            }
+          }
+
+        case None =>
+      }
   }
 
   implicit class ZoomWrapper(images: RDD[(SpatialKey, OrderedImage)]) {
-    def zoomUp(thisZoom: Int): RDD[(SpatialKey, OrderedImage)] = {
-      val partitioner = images.partitioner.get
+
+    def zoomUp(thisZoom: Int, partitionerFactory: TilePartitionerFactory): RDD[(SpatialKey, OrderedImage)] = {
+      println(s"ZOOM UP $thisZoom!")
+      val tileCount = 0
+
       images
         .map { case (key, image) =>
-          (SpatialKey(key.col / 2, key.row / 2), (key, image))
+          val newKey = SpatialKey(key.col / 2, key.row / 2)
+          (newKey, (key, image))
         }
-        .groupByKey(partitioner)
+        .groupByKey(partitionerFactory.mergedAt(thisZoom - 1))
         .mapPartitions({ partition =>
-          val thisMapTransform = TileMath.mapTransformFor(thisZoom)
-          val nextMapTransform = TileMath.mapTransformFor(thisZoom - 1)
           partition.map { case (nextKey, seqTiles) =>
-            val nextExtent = nextMapTransform(nextKey)
-            var image: MultiBandTile = 
-              ArrayMultiBandTile(
-                ByteArrayTile.empty(TileMath.TILE_DIM, TileMath.TILE_DIM),
-                ByteArrayTile.empty(TileMath.TILE_DIM, TileMath.TILE_DIM),
-                ByteArrayTile.empty(TileMath.TILE_DIM, TileMath.TILE_DIM)
+            val nextExtent = getExtent(thisZoom - 1, nextKey.col, nextKey.row)
+
+            val arr = Array.ofDim[Byte](TileMath.TILE_DIM * TileMath.TILE_DIM)
+            val nextImage: Array[MutableArrayTile] =
+              Array(
+                ByteArrayTile(arr.clone, TileMath.TILE_DIM, TileMath.TILE_DIM),
+                ByteArrayTile(arr.clone, TileMath.TILE_DIM, TileMath.TILE_DIM),
+                ByteArrayTile(arr.clone, TileMath.TILE_DIM, TileMath.TILE_DIM)
               )
-            var maxOrder = 0
-            for((thisKey, thisTile) <- seqTiles) {
-              val thisExtent = thisMapTransform(thisKey)
-              if(thisTile.order > maxOrder) maxOrder = thisTile.order
-              image = image.merge(nextExtent, thisExtent, thisTile)
+
+            var nextOrder: Tile =
+              IntConstantTile(NODATA, TileMath.TILE_DIM, TileMath.TILE_DIM)
+
+            for((thisKey, thisImage) <- seqTiles) {
+              val thisExtent = getExtent(thisZoom, thisKey.col, thisKey.row)
+              if(thisExtent.width  < 0.001) {
+                sys.error(s"THIS ONE $thisExtent $thisZoom $thisKey")
+              }
+
+              ZoomWrapper.mergeImage(nextImage, thisImage.image, nextExtent, thisExtent)
+              nextOrder = nextOrder.merge(nextExtent, thisExtent, thisImage.order)
             }
-            (nextKey, OrderedImage(image, maxOrder))
+
+            (nextKey, OrderedImage(ArrayMultiBandTile(nextImage), nextOrder))
           }
         }, preservesPartitioning = true)
     }
   }
 
   implicit class ProcessBetweenWrapper(images: RDD[(SpatialKey, OrderedImage)]) {
-    def processBetween(z1: Int, z2: Int, sink: (Int, SpatialKey, MultiBandTile) => Unit): RDD[(SpatialKey, OrderedImage)] = {
-      val merged = 
+    def processBetween(z1: Int, z2: Int, partitionerFactory: TilePartitionerFactory, sink: (Int, SpatialKey, MultiBandTile) => Unit): RDD[(SpatialKey, OrderedImage)] = {
+      val merged =
         images
           .reduceByKey(OrderedImage.merge)
           .save(z1, sink)
 
+//      merged.save(z1, sink)
+        
+      val zoomed =
+        merged.zoomUp(z1, partitionerFactory)
+
       if(z1 - 1 != z2) {
-        merged
-          .zoomUp(z1)
-          .processBetween(z1 - 1, z2, sink)
-      } else { 
-        merged 
+        zoomed
+          .processBetween(z1 - 1, z2, partitionerFactory, sink)
+      } else {
+        zoomed
       }
     }
   }
 
-  def apply(inputImages: Seq[(Int, Extent, RDD[(Extent, MultiBandTile)])], zoomExtents: ZoomExtents)
+  def apply(inputImages: Seq[(Int, Int, GridBounds, RDD[(SpatialKey, MultiBandTile)])])
            (sink: (Int, SpatialKey, MultiBandTile) => Unit)
            (implicit sc: SparkContext): Unit = {
+    val tileCounts =
+      TileCounts(inputImages.map { case (_, zoom, gbs, _) => (zoom, gbs) })
+    val partitionerFactory = TilePartitionerFactory(20, tileCounts)
+
     val zoomsToTiles: Map[Int, RDD[(SpatialKey, OrderedImage)]] =
       inputImages
-        .flatMap { case (priority, overallExtent, images) =>
-          images
-            .cutTiles(zoomExtents.filter(overallExtent))
-            .map { case (zoom, tiles) =>
-              (zoom,
-                tiles
-                  .partitionBy(new HashPartitioner(20))
-                  .mapValues(OrderedImage(_, priority))
-              )
-            }
+        .map { case (priority, zoom, _, images) =>
+          (zoom,
+            images
+              .mapValues { image => OrderedImage(image, IntConstantTile(priority, image.cols, image.rows)) }
+          )
         }
         .foldLeft(Map[Int, RDD[(SpatialKey, OrderedImage)]]()) { (acc, tup) =>
           val (zoom, theseTiles) = tup
@@ -140,10 +190,15 @@ object Tiler {
           acc + ((zoom, tiles))
         }
 
-    val zoomGroups =
-      (zoomsToTiles.keys.toSeq :+ 0)
+    val sortedZooms =
+      (zoomsToTiles.keys.toSeq :+ 1)
         .sortBy(-_)
+        .toVector
+    val zoomGroups =
+      sortedZooms
         .sliding(2)
+
+    val firstZoom = sortedZooms.head
 
     zoomGroups.foldLeft(None: Option[RDD[(SpatialKey, OrderedImage)]]) { (prev, zooms) =>
       val Seq(z1, z2) = zooms
@@ -153,11 +208,15 @@ object Tiler {
           case None => zoomsToTiles(z1)
         }
 
-      Some(tiles.processBetween(z1, z2, sink))
+      Some(
+        tiles
+          .partitionBy(partitionerFactory.unmergedAt(z1))
+          .processBetween(z1, z2, partitionerFactory, sink)
+      )
     } match {
       case Some(rdd) => 
         // Action to kick off process
-        rdd.count
+        rdd.save(1, sink).count
       case None =>
     }
   }
@@ -180,22 +239,35 @@ object Tiler {
     implicit val sc = getSparkContext()
 
     try {
-      val inputImages: Seq[(Int, Extent, RDD[(Extent, MultiBandTile)])] =
+      val inputImages: Seq[(Int, Int, GridBounds, RDD[(SpatialKey, MultiBandTile)])] =
         jobRequest.inputImages
           .map { ii =>
-           (ii.priority, ii.extent, ImageRDD(ii.imagesFolder))
+           (ii.priority, ii.zoom, ii.gridBounds, TileServiceReader[MultiBandTile](ii.imagesFolder).read(ii.zoom))
           }
 
       val sink = 
-        if(jobRequest.local)
-          new LocalSink(jobRequest.target)
-        else
-          new S3Sink(client, jobRequest.target)
+        new java.net.URI(jobRequest.target).getScheme match {
+          case null => new LocalSink(jobRequest.target)
+          case _ => new S3Sink(client, jobRequest.target)
+        }
 
-      apply(inputImages, jobRequest.zoomExtents)(sink)
+      apply(inputImages)(sink)
 
     } finally {
       sc.stop
     }
   }
+
+  // import org.hotosm.oam.io._
+  // def main(args: Array[String]): Unit = {
+  //   implicit val sc = getSparkContext()
+
+  //   try {
+  //     val tileReader = TileServiceReader[MultiBandTile]("/Users/rob/proj/oam/data/workspace/LC81420412015111LGN00_bands_432")
+  //     val tiles = tileReader.read(12)
+  //     println(s"${tiles.count}")
+  //   } finally {
+  //     sc.stop
+  //   }
+  // }
 }

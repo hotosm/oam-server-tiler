@@ -1,9 +1,9 @@
 {
   "jobId" : "test-job",
-  "target" : "/Users/rob/proj/oam/data/results",
+  "target" : "/Users/rob/proj/oam/data/results2",
   "images" : [
     "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-6.tif",
     "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/LC81420412015111LGN00_bands_432.TIF"
   ],
-  "workspace" : "/Users/rob/proj/oam/data/workspace"
+  "workspace" : "/Users/rob/proj/oam/data/workspace2"
 }

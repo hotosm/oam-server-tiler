@@ -1,40 +1,47 @@
 package org.hotosm.oam
 
 import spray.json._
+import geotrellis.raster._
 
 import org.scalatest._
 
 class JobRequestSpec extends FunSpec with Matchers {
   val testJson = """
 {
-  "jobId" : "nepal_1",
-  "target" : "s3://hotosm-oam-tiles/nepal_1",
-  "input" : [
-    { 
-      "cellSize" : {
-        "width" : 1234.4321,
-        "height" : 6789.9876
+  "target": "/Users/rob/proj/oam/data/results",
+  "jobId": "test-job",
+  "input": [
+    {
+      "gridBounds": {
+        "rowMax": 109878,
+        "colMax": 193078,
+        "colMin": 193040,
+        "rowMin": 109836
       },
-      "extent" : {
-        "xmin" : -123.4324,
-        "ymin" : -123.4324,
-        "xmax" : 123.4324,
-        "ymax" : 123.4324
-      },
-      "images" : "s3://workspace-oam-hotosm-org/image1/chunked"
+      "tiles": "/Users/rob/proj/oam/data/workspace/356f564e3a0dc9d15553c17cf4583f21-6",
+      "zoom": 18,
+      "extent": {
+        "xmin": 85.10125004428353,
+        "ymin": 27.92802942514566,
+        "ymax": 27.97940067918027,
+        "xmax": 85.1529804360412
+      }
     },
-    { 
-      "cellSize" : {
-        "width" : 234.4321,
-        "height" : 789.9876
+    {
+      "gridBounds": {
+        "rowMax": 1736,
+        "colMax": 3013,
+        "colMin": 2986,
+        "rowMin": 1709
       },
-      "extent" : {
-        "xmin" : -123.4324,
-        "ymin" : -123.4324,
-        "xmax" : 123.4324,
-        "ymax" : 123.4324
-      },
-      "images" : "s3://workspace-oam-hotosm-org/image2/chunked"
+      "tiles": "/Users/rob/proj/oam/data/workspace/LC81420412015111LGN00_bands_432",
+      "zoom": 12,
+      "extent": {
+        "xmin": 82.52879450382254,
+        "ymin": 26.359556467334755,
+        "ymax": 28.486769014205997,
+        "xmax": 84.86307565466431
+      }
     }
   ]
 }
@@ -44,13 +51,10 @@ class JobRequestSpec extends FunSpec with Matchers {
     it("should parse the example json") {
       val jr = testJson.parseJson.convertTo[JobRequest]
       jr.inputImages.size should be (2)
-      jr.local should be (false)
-    }
+      jr.inputImages.map(_.gridBounds).toSet should be (
+        Set(GridBounds(2986, 1709, 3013, 1736), GridBounds(193040, 109836, 193078, 109878))
+      )
 
-    it("should pick up the local property for testing") {
-      val jr = 
-        """{ "jobId" : "nepal_1", "target" : "s3://hotosm-oam-tiles/nepal_1", "local" : 1, "input" : [] }""".parseJson.convertTo[JobRequest]
-      jr.local should be (true)
     }
   }
 }
