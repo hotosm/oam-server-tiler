@@ -76,35 +76,26 @@ Also placed in that folder is a `step1_result.json` object that looks like the f
 The Mosaic step is a Scala Spark application that reads in the GeoTiffs and result information from the previous step and performs the mosaicing.
 It outputs a set of web mercator `z/x/y` 256 x 256 PNG tiles to the target s3 or local directory.
 
+To build the JAR that is to be uploaded and referenced in the EMR step, go into the `mosaic` folder and run:
+
+```
+./sbt assembly
+```
+
+Then do something like:
+```
+aws s3 cp target/scala-2.10/... s3://oam-tiler-emr/mosaic.jar
+```
+
 ## Running
 
 There are shell scripts that will run this against EM in the root of the repository. It uses the `awscli` tool to run EMR commands.
 
 ## Timing Notes:
 
-Running full set:
-python: 19m
-scala:   4m
-
-With 1024:
-python: 13m
-scala:   5m
-
-With tmp files and copy:
-python: 8m
-
-With tmp files:
-python: 14m (8.8m max task)
-
-With just copy:
-python: 9 min
-
-
-About 4 cents, 40 cents for workers, 4 cents for master. Tiling job for under 50 cents.
-9.5 G of imagery.
-
-## Notes on EMR instances:
-
-13 minutes for processing (not counting EMR deployment time, which is about 15 minutes for spot instances)
 10 m3.xlarge worker nodes and 1 m3.xlarge master at spot prices (around 5 cents an hour)
-32 images totalling 9.5 GB
+About 4 cents, 40 cents for workers, 4 cents for master.
+Tiling job for under 50 cents.
+9.5 G of imagery. (32 images)
+13 minutes of processing
+~15 minutes of spin up time for cluster
