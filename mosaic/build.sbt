@@ -27,8 +27,10 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % Version.spark,
   "com.azavea.geotrellis" %% "geotrellis-spark" % Version.geotrellis,
   "org.apache.commons" % "commons-io" % "1.3.2",
-  "io.spray"        %% "spray-json"    % "1.3.1",
+  "io.spray" %% "spray-json" % "1.3.1",
+  "com.typesafe" % "config" % "1.2.1",
   "com.amazonaws" % "aws-java-sdk-s3" % "1.9.34",
+  "com.amazonaws" % "aws-java-sdk-sns" % "1.9.34",
   "com.azavea.geotrellis" %%  "geotrellis-testkit" % "0.10.0-SNAPSHOT" % "test",
   "org.scalatest" %%  "scalatest" % "2.2.0" % "test"
 )

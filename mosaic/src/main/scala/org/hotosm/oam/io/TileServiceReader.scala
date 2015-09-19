@@ -1,4 +1,4 @@
-package org.hotosm.oam
+package org.hotosm.oam.io
 
 import geotrellis.vector._
 import geotrellis.raster._
@@ -44,7 +44,7 @@ class S3TileServiceReader[T: ByteReader](uri: String)(implicit sc: SparkContext)
     val bucket = parsed.getHost
     val keys = {
       val path = parsed.getPath
-      AWSClient.default.listKeys(bucket, path.substring(1, path.length))
+      S3Client.default.listKeys(bucket, path.substring(1, path.length))
         .map { key =>
           key match {
             case TilePath(z, x, y) if z.toInt == zoom => Some((SpatialKey(x.toInt, y.toInt), key))
@@ -59,7 +59,7 @@ class S3TileServiceReader[T: ByteReader](uri: String)(implicit sc: SparkContext)
     sc.parallelize(keys)
       .partitionBy(new HashPartitioner(numPartitions))
       .mapPartitions({ partition =>
-        val client = AWSClient.default
+        val client = S3Client.default
 
         partition.map { case (spatialKey, s3Key) =>
 

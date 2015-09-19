@@ -1,4 +1,4 @@
-package org.hotosm.oam
+package org.hotosm.oam.io
 
 import geotrellis.raster._
 import geotrellis.raster.render._
@@ -42,7 +42,7 @@ class LocalSink(target: String) extends Sink {
 }
 
 class S3Sink(bucket: String, s3Key: String) extends Sink {
-  val client = AWSClient.default
+  val client = S3Client.default
   def apply(zoom: Int, spatialKey: SpatialKey, tile: MultiBandTile): Unit = {
     val tileKey = s"$s3Key/$zoom/${spatialKey.col}/${spatialKey.row}.png"
     val png = convertToPng(tile)

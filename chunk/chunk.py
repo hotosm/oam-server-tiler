@@ -23,6 +23,23 @@ from affine import Affine
 APP_NAME = "Reproject and chunk"
 TILE_DIM = 1024
 OUTPUT_FILE_NAME = "step1_result.json"
+SNS_TOPIC = "arn:aws:sns:us-east-1:670261699094:oam-tiler-status"
+SNS_REGION = "us-east-1"
+
+def notify(m):
+    client = boto3.client('sns', region_name=SNS_REGION)
+    res = client.publish(TopicArn=SNS_TOPIC, Message=json.dumps(m))
+    if res['ResponseMetadata']['HTTPStatusCode'] != 200:
+        raise Exception(json.dumps(res))
+
+def notify_start(jobId):
+    notify({ "jobId": jobId, "stage": "chunk", "status": "STARTED" })
+
+def notify_success(jobId):
+    notify({ "jobId": jobId, "stage": "chunk", "status": "FINISHED" })
+
+def notify_failure(jobId, error_message):
+    notify({ "jobId": jobId, "stage": "chunk", "status": "FAILED", "error":  error_message})
 
 def get_filename(uri):
     return os.path.splitext(os.path.basename(uri))[0]
@@ -411,11 +428,13 @@ def run_spark_job(tile_dim):
                 res.extend(sources2)
             return res
 
-    if len(sys.argv) != 2:
-        print "ERROR: A single argument of the path to the request JSON is required"
-        sys.exit(1)
-
     request_uri = sys.argv[1]
+
+    # If there's more arguements, its to turn off notifications
+    publish_notification = True
+    if len(sys.argv) == 3:
+        publish_notifications = False
+
     parsed_request_uri = urlparse(request_uri)
     request = None
     if not parsed_request_uri.scheme:
@@ -425,61 +444,71 @@ def run_spark_job(tile_dim):
         o = client.get_object(Bucket=parsed_request_uri.netloc, Key=parsed_request_uri.path[1:])
         request = json.loads(o["Body"].read())
 
-    print request
     source_uris = request["images"]
     workspace = request["workspace"]
     jobId = request["jobId"]
     target = request["target"]
 
-    uri_sets = create_uri_sets(source_uris, workspace)
-    image_count = len(uri_sets)
+    if publish_notifications:
+        notify_start(jobId)
 
-    conf = SparkConf().setAppName(APP_NAME)
-    sc = SparkContext(conf=conf)
+    try:
+        uri_sets = create_uri_sets(source_uris, workspace)
+        image_count = len(uri_sets)
 
-    image_source_accumulator = sc.accumulator([], ImageSourceAccumulatorParam())
+        conf = SparkConf().setAppName(APP_NAME)
+        sc = SparkContext(conf=conf)
 
-    def create_image_sources(uri_set, acc):
-        image_source = create_image_source(uri_set.workspace_source_uri, uri_set.image_folder, uri_set.order, tile_dim)
-        acc += [image_source]
-        return image_source
+        image_source_accumulator = sc.accumulator([], ImageSourceAccumulatorParam())
 
-    def uri_set_copy(uri_set):
-        copy_to_workspace(uri_set.source_uri, uri_set.workspace_target)
-        return uri_set
+        def create_image_sources(uri_set, acc):
+            image_source = create_image_source(uri_set.workspace_source_uri, uri_set.image_folder, uri_set.order, tile_dim)
+            acc += [image_source]
+            return image_source
 
-    uri_set_rdd = sc.parallelize(uri_sets, image_count).map(uri_set_copy)
-    image_sources = uri_set_rdd.map(lambda uri_set: create_image_sources(uri_set, image_source_accumulator))
-    chunk_tasks = image_sources.flatMap(lambda image_source: generate_chunk_tasks(image_source, tile_dim))
-    chunks_count = chunk_tasks.cache().count()
-    numPartitions = max(chunks_count / 10, min(50, image_count))
-    
-    chunk_tasks.repartition(numPartitions).foreach(process_chunk_task)
+        def uri_set_copy(uri_set):
+            copy_to_workspace(uri_set.source_uri, uri_set.workspace_target)
+            return uri_set
 
-    image_sources = image_source_accumulator.value
-    print "Processed %d images into %d chunks" % (len(image_sources), chunks_count)
+        uri_set_rdd = sc.parallelize(uri_sets, image_count).map(uri_set_copy)
+        image_sources = uri_set_rdd.map(lambda uri_set: create_image_sources(uri_set, image_source_accumulator))
+        chunk_tasks = image_sources.flatMap(lambda image_source: generate_chunk_tasks(image_source, tile_dim))
+        chunks_count = chunk_tasks.cache().count()
+        numPartitions = max(chunks_count / 10, min(50, image_count))
 
-    input = map(construct_image_info, sorted(image_sources, key=lambda im: im.order))
+        chunk_tasks.repartition(numPartitions).foreach(process_chunk_task)
 
-    result = {
-        "jobId": jobId,
-        "target": target,
-        "tileSize": tile_dim,
-        "input": input
-    }
-        
-    # Save off result
-    workspace_parsed = urlparse(workspace)
-    if not workspace_parsed.scheme:
-        # Save to local files system
-        open(os.path.join(workspace, OUTPUT_FILE_NAME), 'w').write(json.dumps(result))
-    elif workspace_parsed.scheme == "s3":
-        client = boto3.client("s3")
+        image_sources = image_source_accumulator.value
+        print "Processed %d images into %d chunks" % (len(image_sources), chunks_count)
 
-        bucket = workspace_parsed.netloc
-        key = os.path.join(workspace_parsed.path, OUTPUT_FILE_NAME)[1:]
+        input = map(construct_image_info, sorted(image_sources, key=lambda im: im.order))
 
-        client.put_object(Bucket=bucket, Key=key, Body=json.dumps(result))
+        result = {
+            "jobId": jobId,
+            "target": target,
+            "tileSize": tile_dim,
+            "input": input
+        }
+
+        # Save off result
+        workspace_parsed = urlparse(workspace)
+        if not workspace_parsed.scheme:
+            # Save to local files system
+            open(os.path.join(workspace, OUTPUT_FILE_NAME), 'w').write(json.dumps(result))
+        elif workspace_parsed.scheme == "s3":
+            client = boto3.client("s3")
+
+            bucket = workspace_parsed.netloc
+            key = os.path.join(workspace_parsed.path, OUTPUT_FILE_NAME)[1:]
+
+            client.put_object(Bucket=bucket, Key=key, Body=json.dumps(result))
+    except Exception, e:
+        if publish_notifications:
+            notify_failure(jobId, "%s: %s" % (type(e).__name__, e.message))
+        raise
+
+    if publish_notifications:
+        notify_success(jobId)
 
     print "Done."
 

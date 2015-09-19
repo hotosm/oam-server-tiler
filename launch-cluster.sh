@@ -13,7 +13,7 @@ aws emr create-cluster \
   --ec2-attributes KeyName=oam-emanuele \
   --applications Name=Spark \
   --instance-groups \
-    InstanceCount=1,BidPrice=$MASTER_PRICE,InstanceGroupType=MASTER,InstanceType=$MASTER_INSTANCE \
-    InstanceCount=$WORKER_COUNT,BidPrice=$WORKER_PRICE,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE \
+    Name=Master,InstanceCount=1,InstanceGroupType=MASTER,InstanceType=$MASTER_INSTANCE \
+    Name=Workers,InstanceCount=$WORKER_COUNT,BidPrice=$WORKER_PRICE,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE \
   --bootstrap-action Path=s3://oam-tiler-emr/bootstrap.sh \
   --configurations file://./emr.json

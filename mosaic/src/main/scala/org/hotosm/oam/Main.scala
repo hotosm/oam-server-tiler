@@ -1,5 +1,7 @@
 package org.hotosm.oam
 
+import org.hotosm.oam.io._
+
 import org.apache.spark._
 import org.apache.spark.rdd._
 import geotrellis.raster._
@@ -20,9 +22,10 @@ object Main {
   }
 
   def main(args: Array[String]): Unit = {
-    assert(args.length == 1, "Arguement error: must only be one argument, that is the URI to the request JSON")
+    val publishNotifications =
+      args.length != 2
 
-    val client = AWSClient.default
+    assert(args.length < 1, "Arguement error: must give the URI to the step1 result JSON.")
 
     val jobRequest = {
       val uri = args(0)
@@ -30,9 +33,11 @@ object Main {
         case null =>
           scala.io.Source.fromFile(uri).getLines.mkString.parseJson.convertTo[JobRequest]
         case _ =>
-          client.readTextFile(uri).parseJson.convertTo[JobRequest]
+          S3Client.default.readTextFile(uri).parseJson.convertTo[JobRequest]
       }
     }
+
+    if(publishNotifications) { SnsClient.notifyStart(jobRequest.id) }
 
     implicit val sc = getSparkContext()
 
@@ -57,9 +62,14 @@ object Main {
       }
 
       Tiler(inputImages)(createSink)
-
+    } catch {
+      case e: Exception =>
+        if(publishNotifications) { SnsClient.notifyFailure(jobRequest.id, e) }
+        throw e
     } finally {
       sc.stop
     }
+
+    if(publishNotifications) { SnsClient.notifySuccess(jobRequest.id) }
   }
 }

@@ -1,3 +1,12 @@
+MASTER_INSTANCE=m3.xlarge
+MASTER_PRICE=0.15
+
+WORKER_INSTANCE=m3.xlarge
+WORKER_PRICE=0.15
+
+# This is how many works beyond the 2 reserve instances
+WORKER_COUNT=8
+
 DRIVER_MEMORY=4G
 NUM_EXECUTORS=20
 EXECUTOR_MEMORY=5G
@@ -12,8 +21,9 @@ aws emr create-cluster \
   --ec2-attributes KeyName=oam-emanuele \
   --applications Name=Spark \
   --instance-groups \
-    InstanceCount=1,BidPrice=0.150,InstanceGroupType=MASTER,InstanceType=m3.xlarge \
-    InstanceCount=10,BidPrice=0.150,InstanceGroupType=CORE,InstanceType=m3.xlarge \
+    Name=Master,InstanceCount=1,InstanceGroupType=MASTER,InstanceType=$MASTER_INSTANCE \
+    Name=ReservedWorkers,InstanceCount=2,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE \
+    Name=SpotWorkers,InstanceCount=$WORKER_COUNT,BidPrice=$WORKER_PRICE,InstanceGroupType=TASK,InstanceType=$WORKER_INSTANCE \
   --bootstrap-action Path=s3://oam-tiler-emr/bootstrap.sh \
   --configurations file://./emr.json \
   --steps \

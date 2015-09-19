@@ -1,4 +1,4 @@
-package org.hotosm.oam
+package org.hotosm.oam.io
 
 import com.amazonaws.auth.{DefaultAWSCredentialsProviderChain, AWSCredentials, AWSCredentialsProvider}
 import com.amazonaws.ClientConfiguration
@@ -11,8 +11,8 @@ import java.io.{InputStream, ByteArrayOutputStream, ByteArrayInputStream, DataIn
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-class AWSClient(credentials: AWSCredentials, config: ClientConfiguration) {
-  val s3client = new com.amazonaws.services.s3.AmazonS3Client(credentials, config)
+class S3Client(credentials: AWSCredentials, config: ClientConfiguration) {
+  private val s3client = new com.amazonaws.services.s3.AmazonS3Client(credentials, config)
 
   def readTextFile(uri: String): String = {
     val parsed = new java.net.URI(uri)
@@ -22,9 +22,6 @@ class AWSClient(credentials: AWSCredentials, config: ClientConfiguration) {
     val contentStream = obj.getObjectContent
     IOUtils.toString(contentStream)
   }
-
-  // def getFileKeys(listing: ObjectListing): Seq[String] =
-  //   listing.getObjectSummaries.asScala.map(_.getKey).filterNot(_ endsWith "/")
 
   def listKeys(bucket: String, key: String): Seq[String] = {
     val request = new ListObjectsRequest()
@@ -41,24 +38,6 @@ class AWSClient(credentials: AWSCredentials, config: ClientConfiguration) {
     } while (listing.isTruncated)
 
     result.toSeq
-    // val request = new ListObjectsRequest(bucket, key, null, null, null)
-    // new Iterator[String] {
-    //   var listing = s3client.listObjects(request)
-    //   var iter = getFileKeys(listing).iterator
-
-    //   def getNextPage: Boolean =  {
-    //     val nextRequest = request.withMarker(listing.getNextMarker)
-    //     listing = s3client.listObjects(nextRequest)
-    //     iter = getFileKeys(listing).iterator
-    //     iter.hasNext
-    //   }
-
-    //   def hasNext: Boolean = {
-    //     iter.hasNext || getNextPage
-    //   }
-
-    //   def next: String = iter.next
-    // }
   }
 
   private def readInputStream(inStream: InputStream): Array[Byte] = {
@@ -92,7 +71,7 @@ class AWSClient(credentials: AWSCredentials, config: ClientConfiguration) {
   }
 }
 
-object AWSClient {
+object S3Client {
   def default = {
     val provider = new DefaultAWSCredentialsProviderChain()
     val config = new com.amazonaws.ClientConfiguration
@@ -101,6 +80,6 @@ object AWSClient {
     config.setConnectionTimeout(100000)
     config.setSocketTimeout(100000)
     config.setRetryPolicy(PredefinedRetryPolicies.getDefaultRetryPolicyWithCustomMaxRetries(32))
-    new AWSClient(provider.getCredentials, config)
+    new S3Client(provider.getCredentials, config)
   }
 }

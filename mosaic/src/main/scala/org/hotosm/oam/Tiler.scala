@@ -1,8 +1,9 @@
 package org.hotosm.oam
 
+import org.hotosm.oam.io._
+
 import org.apache.spark._
 import org.apache.spark.rdd._
-
 import geotrellis.raster._
 import geotrellis.spark._
 
