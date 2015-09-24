@@ -20,15 +20,19 @@ from rasterio._io import virtual_file_to_buffer
 
 from affine import Affine
 
-APP_NAME = "Reproject and chunk"
+APP_NAME = "OAM Tiler Chunk"
 TILE_DIM = 1024
 OUTPUT_FILE_NAME = "step1_result.json"
-SNS_TOPIC = "arn:aws:sns:us-east-1:670261699094:oam-tiler-status"
-SNS_REGION = "us-east-1"
+STATUS_QUEUE = "https://sqs.us-east-1.amazonaws.com/670261699094/oam-server-tiler-status"
+STATUS_QUEUE_REGION = "us-east-1"
 
 def notify(m):
-    client = boto3.client('sns', region_name=SNS_REGION)
-    res = client.publish(TopicArn=SNS_TOPIC, Message=json.dumps(m))
+    client = boto3.client('sqs', region_name=STATUS_QUEUE_REGION)
+    res = client.send_message(
+        QueueUrl=STATUS_QUEUE,
+        MessageBody=json.dumps(m)
+    )
+
     if res['ResponseMetadata']['HTTPStatusCode'] != 200:
         raise Exception(json.dumps(res))
 
@@ -39,7 +43,7 @@ def notify_success(jobId):
     notify({ "jobId": jobId, "stage": "chunk", "status": "FINISHED" })
 
 def notify_failure(jobId, error_message):
-    notify({ "jobId": jobId, "stage": "chunk", "status": "FAILED", "error":  error_message})
+    notify({ "jobId": jobId, "stage": "chunk", "status": "FAILED", "error":  error_message })
 
 def get_filename(uri):
     return os.path.splitext(os.path.basename(uri))[0]
@@ -53,7 +57,7 @@ def mkdir_p(dir):
         else: raise
 
 UriSet = namedtuple('UriSet', 'source_uri workspace_target workspace_source_uri image_folder order')
-ImageSource = namedtuple('ImageSource', "source_uri src_bounds src_shape src_crs zoom ll_bounds tile_bounds image_folder order")
+ImageSource = namedtuple('ImageSource', "origin_uri source_uri src_bounds src_shape src_crs zoom ll_bounds tile_bounds image_folder order")
 ChunkTask = namedtuple('ChunkTask', "source_uri target_meta target")
 
 def vsi_curlify(uri):
@@ -96,23 +100,6 @@ def write_bytes_to_target(target_uri, contents):
 
         with open(output_path, "w") as f:
             f.write(contents)
-
-# def write_path_to_target(target_uri, src_path):
-#     parsed_target = urlparse(target_uri)
-#     if parsed_target.scheme == "s3":
-#         client = boto3.client("s3")
-
-#         bucket = parsed_target.netloc
-#         key = parsed_target.path[1:]
-
-#         extra_args = { "ACL": "public-read", "ContentType": "image/tiff" }
-
-#         client.upload_file(src_path, bucket, key, ExtraArgs = extra_args)
-#     else:
-#         output_path = target_uri
-#         mkdir_p(os.path.dirname(output_path))
-
-#         shutil.copy(src_path, output_path)
 
 def create_uri_sets(images, workspace_uri):
     result = []
@@ -174,33 +161,6 @@ def copy_to_workspace(source_uri, dest_uri):
 
     write_bytes_to_target(dest_uri, contents)
 
-# def copy_to_workspace(source_uri, dest_uri):
-#     """
-#     Translates an image from a URI to a compressed, tiled GeoTIFF version in the workspace
-#     """
-#     creation_options = {
-#         "driver": "GTiff",
-#         "tiled": True,
-#         "compress": "lzw",
-#         "predictor":   2, # 3 for floats, 2 otherwise
-#         "sparse_ok": True
-#     }
-
-#     tmp_path = tempfile.mktemp()
-#     try:
-#         with rasterio.open(source_uri, "r") as src:
-#             meta = src.meta.copy()
-#             meta.update(creation_options)
-
-#             with rasterio.open(tmp_path, "w", **meta) as tmp:
-#                 tmp.write(src.read())
-        
-#         write_path_to_target(dest_uri, tmp_path)
-#     finally:
-#         if os.path.exists(tmp_path):
-#             print "Deleting %s" % (tmp_path)
-#             os.remove(tmp_path)
-
 def get_zoom(resolution, tile_dim):
     zoom = math.log((2 * math.pi * 6378137) / (resolution * tile_dim)) / math.log(2)
     if zoom - int(zoom) > 0.20:
@@ -208,7 +168,7 @@ def get_zoom(resolution, tile_dim):
     else:
         return int(zoom)
 
-def create_image_source(source_uri, image_folder, order, tile_dim):
+def create_image_source(origin_uri, source_uri, image_folder, order, tile_dim):
     with rasterio.drivers():
         with rasterio.open(source_uri) as src:
             shape = src.shape
@@ -240,7 +200,8 @@ def create_image_source(source_uri, image_folder, order, tile_dim):
             min_tile = mercantile.tile(ll_bounds[0], ll_bounds[3], zoom)
             max_tile = mercantile.tile(ll_bounds[2], ll_bounds[1], zoom)
             
-            return ImageSource(source_uri=source_uri,
+            return ImageSource(origin_uri=origin_uri,
+                               source_uri=source_uri,
                                src_bounds=src.bounds,
                                src_shape=src.shape,
                                src_crs=src.crs,
@@ -336,65 +297,6 @@ def process_chunk_task(task):
 
     write_bytes_to_target(task.target, contents)
 
-# def process_chunk_task(task):
-#     """
-#     Chunks the image into tile_dim x tile_dim tiles,
-#     and saves them to the target folder (s3 or local)
-
-#     Returns the extent of the output raster.
-#     """
-
-#     creation_options = {
-#         "driver": "GTiff",
-#         "crs": "EPSG:3857",
-#         "tiled": True,
-#         "compress": "deflate",
-#         "predictor":   2, # 3 for floats, 2 otherwise
-#         "sparse_ok": True
-#     }
-
-#     tmp_path = tempfile.mktemp()
-#     try:
-#         with rasterio.open(task.source_uri, "r") as src:
-#             meta = src.meta.copy()
-#             meta.update(creation_options)
-#             meta.update(task.target_meta)
-
-#             cols = meta["width"]
-#             rows = meta["height"]
-
-# #            tmp_path = "/vsimem/" + get_filename(task.target)
-
-#             with rasterio.open(tmp_path, "w", **meta) as tmp:
-#                 # Reproject the src dataset into image tile.
-#                 warped = []
-#                 for bidx in src.indexes:
-#                     source = rasterio.band(src, bidx)
-#                     warped.append(numpy.zeros((cols, rows), dtype=meta['dtype']))
-
-#                     warp.reproject(
-#                         source=source,
-#                         src_nodata=0,
-#                         destination=warped[bidx - 1],
-#                         dst_transform=meta["transform"],
-#                         dst_crs=meta["crs"],
-#                         resampling=RESAMPLING.bilinear
-#                     )
-
-#                 # check for chunks containing only zero values
-#                 if not any(map(lambda b: b.any(), warped)):
-#                     return
-
-#                 # write out our warped data to the vsimem raster
-#                 for bidx in src.indexes:
-#                     tmp.write_band(bidx, warped[bidx - 1])
-
-#         write_bytes_to_target(task.target, tmp_path)
-#     finally:
-#         if os.path.exists(tmp_path):
-#             print "Deleting %s" % (tmp_path)
-#             os.remove(tmp_path)
-
 def construct_image_info(image_source):
     extent = { "xmin": image_source.ll_bounds[0], "ymin": image_source.ll_bounds[1],
                "xmax": image_source.ll_bounds[2], "ymax": image_source.ll_bounds[3] }
@@ -402,6 +304,7 @@ def construct_image_info(image_source):
     gridBounds = { "colMin" : image_source.tile_bounds[0], "rowMin": image_source.tile_bounds[1],
                    "colMax": image_source.tile_bounds[2], "rowMax": image_source.tile_bounds[3] }
     return {
+        "sourceUri": image_source.origin_uri,
         "extent" : extent,
         "zoom" : image_source.zoom,
         "gridBounds" : gridBounds,
@@ -431,7 +334,7 @@ def run_spark_job(tile_dim):
     request_uri = sys.argv[1]
 
     # If there's more arguements, its to turn off notifications
-    publish_notification = True
+    publish_notifications = True
     if len(sys.argv) == 3:
         publish_notifications = False
 
@@ -462,7 +365,7 @@ def run_spark_job(tile_dim):
         image_source_accumulator = sc.accumulator([], ImageSourceAccumulatorParam())
 
         def create_image_sources(uri_set, acc):
-            image_source = create_image_source(uri_set.workspace_source_uri, uri_set.image_folder, uri_set.order, tile_dim)
+            image_source = create_image_source(uri_set.source_uri, uri_set.workspace_source_uri, uri_set.image_folder, uri_set.order, tile_dim)
             acc += [image_source]
             return image_source
 
@@ -481,13 +384,13 @@ def run_spark_job(tile_dim):
         image_sources = image_source_accumulator.value
         print "Processed %d images into %d chunks" % (len(image_sources), chunks_count)
 
-        input = map(construct_image_info, sorted(image_sources, key=lambda im: im.order))
+        input_info = map(construct_image_info, sorted(image_sources, key=lambda im: im.order))
 
         result = {
             "jobId": jobId,
             "target": target,
             "tileSize": tile_dim,
-            "input": input
+            "input": input_info
         }
 
         # Save off result
@@ -516,19 +419,3 @@ if __name__ == "__main__":
     tile_dim = TILE_DIM
 
     run_spark_job(tile_dim)
-
-    # source_uri = "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-24.tif"
-    # image_folder = "/Users/rob/proj/oam/data/workspace2/test"
-
-    # # source_uri = "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/356f564e3a0dc9d15553c17cf4583f21-6.tif"
-    # # image_folder = "/Users/rob/proj/oam/data/workspace/356f564e3a0dc9d15553c17cf4583f21-6"
-    # source_uri = "/Users/rob/proj/oam/data/postgis-gt-faceoff/raw/LC81420412015111LGN00_bands_432.tif"
-    # image_folder = "/Users/rob/proj/oam/data/workspace/LC81420412015111LGN00_bands_432"
-
-    # image_source = create_image_source(source_uri, image_folder, 0, tile_dim)
-    # chunk_tasks = generate_chunk_tasks(image_source, tile_dim)
-
-    # for task in filter(lambda x: x.target.endswith('193205/109909.tif'), chunk_tasks):
-    #     print task
-    #     print process_chunk_task(task)
-    # print construct_image_info(image_source)

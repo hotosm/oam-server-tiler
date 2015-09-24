@@ -1,8 +1,8 @@
 package org.hotosm.oam
 
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
-import com.amazonaws.services.sns.AmazonSNSClient
-import com.amazonaws.services.sns.model._
+import com.amazonaws.services.sqs._
+import com.amazonaws.services.sqs.model._
 import com.amazonaws.regions.Regions
 
 import org.apache.commons.io._
@@ -11,22 +11,21 @@ import java.io.{InputStream, ByteArrayOutputStream, ByteArrayInputStream, DataIn
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 
-object SnsClient {
-  lazy val topicArn = {
+object Status {
+  lazy val queueUrl = {
     val config = ConfigFactory.load()
-    config.getString("oam.statusSnsArn")
+    config.getString("oam.statusSqsQueueUrl")
   }
 
-  lazy val snsRegion = {
+  lazy val sqsRegion = {
     val config = ConfigFactory.load()
-    config.getString("oam.statusSnsRegion")
+    config.getString("oam.statusSqsRegion")
   }
 
-  def sendNotification(msg:String): Unit = {
-    val snsClient = new AmazonSNSClient()
-    snsClient.setRegion(Regions.fromName(snsRegion))
-    val req = new PublishRequest(topicArn, msg)
-    val result = snsClient.publish(req)
+  def sendNotification(msg: String): Unit = {
+    val client = new AmazonSQSClient()
+    val req = new SendMessageRequest(queueUrl, msg)
+    val result = client.sendMessage(req)
     println("MessageId - " + result.getMessageId);
   }
 
@@ -36,6 +35,9 @@ object SnsClient {
   def notifyFailure(jobId: String, exception: Exception): Unit =
     sendNotification(s"""{ "jobId": "$jobId", "stage": "mosaic", "status": "FAILED", "error": "$exception" }""")
 
-  def notifySuccess(jobId: String): Unit =
-    sendNotification(s"""{ "jobId": "$jobId", "stage": "mosaic", "status": "FINISHED" }""")
+  def notifySuccess(jobId: String, target: String, sourceUris: Seq[String]): Unit = {
+    val csv = sourceUris.map { uri => s""""$uri"""" }.mkString(",")
+    val sourceUrisJson = s"[$csv]"
+    sendNotification(s"""{ "jobId": "$jobId", "stage": "mosaic", "status": "FINISHED", "target": "$target", "images": $sourceUrisJson }""")
+  }
 }

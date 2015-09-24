@@ -1,0 +1,9 @@
+{
+  "jobId" : "emr-test-job-partial",
+  "target" : "s3://oam-tiles/oam-tiler-test-emr-partial-2",
+  "images" : [
+    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-12.tif",
+    "http://oin-astrodigital.s3.amazonaws.com/LC81420412015111LGN00_bands_432.TIF"
+  ],
+  "workspace" : "s3://oam-server-tiler/workspace/emr-test-job-partial"
+}

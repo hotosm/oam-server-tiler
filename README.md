@@ -91,6 +91,26 @@ aws s3 cp target/scala-2.10/... s3://oam-tiler-emr/mosaic.jar
 
 There are shell scripts that will run this against EM in the root of the repository. It uses the `awscli` tool to run EMR commands.
 
+#### upload-code.sh
+
+This will build the JAR file for the mosaic step and upload the `chunk.py` and `mosaic.jar` to the appropriate place in s3.
+
+#### launch-cluster.sh
+
+This will launch a long-running EMR cluster to run steps against. This is useful for testing, when you want to avoid waiting for
+a cluster to be bootstrapped while running jobs in a row.
+
+This will output a cluster id, which should be set into the `add-step*` scripts so that they run against the correct cluster.
+
+#### add-steps.sh, add-step1.sh, add-step2.sh
+
+This will run the tiling process against a long-running cluster deployed with `launch-cluster.sh`. Just make sure to set the correct
+`CLUSTER_ID` at the top. Also, make sure to set the `NUM_EXECUTORS` and `EXECUTOR_MEMORY` correctly, based on the number of nodes in
+the cluster (one executor per core per worker node). `2304m` is the amount of memory to give one executor for the 4-core `m3.xlarge` nodes.
+
+Also, you'll need to set `REQUEST_URI` and `WORKSPACE_URI`, which set the request for the chunk step and the location of the workspace for
+the second step, respectively.
+
 ## Timing Notes:
 
 10 m3.xlarge worker nodes and 1 m3.xlarge master at spot prices (around 5 cents an hour)

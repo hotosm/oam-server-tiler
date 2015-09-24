@@ -9,7 +9,7 @@ import spray.json._
 case class JobRequest(id: String, target: String, tileSize: Int, inputImageDefinitions: Seq[InputImageDefinition]) {
   def inputImages(implicit sc: SparkContext): Seq[InputImageRDD] = {
     inputImageDefinitions
-      .map { case InputImageDefinition(zoom, gridBounds, imagesFolder, priority) =>
+      .map { case InputImageDefinition(_, zoom, gridBounds, imagesFolder, priority) =>
         val reader =
           new java.net.URI(imagesFolder).getScheme match {
             case "s3" => new S3TileServiceReader[MultiBandTile](imagesFolder)

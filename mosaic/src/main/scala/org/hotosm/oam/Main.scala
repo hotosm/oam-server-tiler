@@ -25,7 +25,9 @@ object Main {
     val publishNotifications =
       args.length != 2
 
-    assert(args.length < 1, "Arguement error: must give the URI to the step1 result JSON.")
+    if(args.length < 1) {
+      sys.error("Argument error: must give the URI to the step1 result JSON.")
+    }
 
     val jobRequest = {
       val uri = args(0)
@@ -37,7 +39,7 @@ object Main {
       }
     }
 
-    if(publishNotifications) { SnsClient.notifyStart(jobRequest.id) }
+    if(publishNotifications) { Status.notifyStart(jobRequest.id) }
 
     implicit val sc = getSparkContext()
 
@@ -64,12 +66,12 @@ object Main {
       Tiler(inputImages)(createSink)
     } catch {
       case e: Exception =>
-        if(publishNotifications) { SnsClient.notifyFailure(jobRequest.id, e) }
+        if(publishNotifications) { Status.notifyFailure(jobRequest.id, e) }
         throw e
     } finally {
       sc.stop
     }
 
-    if(publishNotifications) { SnsClient.notifySuccess(jobRequest.id) }
+    if(publishNotifications) { Status.notifySuccess(jobRequest.id, jobRequest.target, jobRequest.inputImageDefinitions.map(_.sourceUri)) }
   }
 }

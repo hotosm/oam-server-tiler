@@ -26,7 +26,8 @@ class JobRequestSpec extends FunSpec with Matchers {
         "ymin": 27.92802942514566,
         "ymax": 27.97940067918027,
         "xmax": 85.1529804360412
-      }
+      },
+      "sourceUri": "s3://bucket/source.tif"
     },
     {
       "gridBounds": {
@@ -42,7 +43,8 @@ class JobRequestSpec extends FunSpec with Matchers {
         "ymin": 26.359556467334755,
         "ymax": 28.486769014205997,
         "xmax": 84.86307565466431
-      }
+      },
+      "sourceUri": "s3://bucket/source2.tif"
     }
   ]
 }

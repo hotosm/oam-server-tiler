@@ -1,13 +1,9 @@
 {
   "jobId" : "test-job",
-  "target" : "s3://oam-tiles/oam-tiler-test-spark-1",
+  "target" : "/Users/rob/proj/oam/data/results",
   "images" : [
-    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-5.tif",
-    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-6.tif",
-    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-7.tif",
-    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-8.tif",
-    "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-9.tif",
-    "http://oin-astrodigital.s3.amazonaws.com/LC81410412014277LGN00_bands_432.TIF"
+    "/Users/rob/proj/oam/data/raw/356f564e3a0dc9d15553c17cf4583f21-5.tif",
+    "/Users/rob/proj/oam/data/raw/LC81410412014277LGN00_bands_432.TIF"
   ],
-  "workspace" : "s3://workspace-oam-hotosm-org/test-job"
+  "workspace" : "/Users/rob/proj/oam/data/workspace"
 }
