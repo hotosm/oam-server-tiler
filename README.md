@@ -111,6 +111,38 @@ the cluster (one executor per core per worker node). `2304m` is the amount of me
 Also, you'll need to set `REQUEST_URI` and `WORKSPACE_URI`, which set the request for the chunk step and the location of the workspace for
 the second step, respectively.
 
+#### How to connect to UI's in EMR
+
+Follow these instructions: Namely set up the ssh tunnel using: http://docs.aws.amazon.com/ElasticMapReduce/latest/DeveloperGuide/emr-ssh-tunnel.html
+
+```
+ssh -i ~/mykeypair.pem -N -D 8157 hadoop@ec2-###-##-##-###.compute-1.amazonaws.com
+```
+
+Use foxyproxy to set up proxy forwarding; instructions are found here: http://docs.aws.amazon.com/ElasticMapReduce/latest/DeveloperGuide/emr-connect-master-node-proxy.html
+However, use the following foxyproxy settings instead of the one listed in that doc (this enables getting to the Spark UI)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<foxyproxy>
+   <proxies>
+      <proxy name="emr-socks-proxy" id="56835462" notes="" enabled="true" color="#0055E5" mode="manual" autoconfMode="pac" lastresort="false">
+         <manualconf host="localhost" port="8157" socksversion="5" isSocks="true" />
+         <autoconf url="" reloadPac="false" loadNotification="true" errorNotification="true" autoReload="false" reloadFreqMins="60" disableOnBadPAC="true" />
+         <matches>
+            <match enabled="true" name="*ec2*.amazonaws.com*" isRegex="false" pattern="*ec2*.amazonaws.com*" reload="true" autoReload="false" isBlackList="false" isMultiLine="false" fromSubscription="false" caseSensitive="false" />
+            <match enabled="true" name="*ec2*.compute*" isRegex="false" pattern="*ec2*.compute*" reload="true" autoReload="false" isBlackList="false" isMultiLine="false" fromSubscription="false" caseSensitive="false" />
+            <match enabled="true" name="10.*" isRegex="false" pattern="http://10.*" reload="true" autoReload="false" isBlackList="false" isMultiLine="false" fromSubscription="false" caseSensitive="false" />
+            <match enabled="true" name="*ec2.internal*" isRegex="false" pattern="*ec2.internal*" reload="true" autoReload="false" isBlackList="false" isMultiLine="false" fromSubscription="false" caseSensitive="false" />
+            <match enabled="true" name="*compute.internal*" isRegex="false" pattern="*compute.internal*" reload="true" autoReload="false" isBlackList="false" isMultiLine="false" fromSubscription="false" caseSensitive="false" />
+         </matches>
+      </proxy>
+   </proxies>
+</foxyproxy>
+```
+
+After foxyproxy is enabled and the SSH tunnel is set up, you can click on the `Resource Manager` in the AWS UI for the cluster, which takes you to the YARN UI. For a running job, there will be an Tracking UI `Application Master` link all the way to the right for that job. Click on that, and it should bring up the Spark UI.
+
 ## Timing Notes:
 
 10 m3.xlarge worker nodes and 1 m3.xlarge master at spot prices (around 5 cents an hour)
