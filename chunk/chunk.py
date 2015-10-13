@@ -250,6 +250,8 @@ def process_chunk_task(task):
     Returns the extent of the output raster.
     """
 
+    from rasterio.warp import RESAMPLING
+
     creation_options = {
         "driver": "GTiff",
         "crs": "EPSG:3857",
@@ -282,8 +284,7 @@ def process_chunk_task(task):
                     destination=warped[bidx - 1],
                     dst_transform=meta["transform"],
                     dst_crs=meta["crs"],
-                    # NOTE: not using rasterio.warp.RESAMPLING because it breaks pyspark-1.5.x
-                    resampling=1, # bilinear
+                    resampling=RESAMPLING.bilinear,
                 )
 
             # check for chunks containing only zero values
