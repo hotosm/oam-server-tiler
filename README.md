@@ -84,7 +84,7 @@ To build the JAR that is to be uploaded and referenced in the EMR step, go into 
 
 Then do something like:
 ```
-aws s3 cp target/scala-2.10/... s3://oam-tiler-emr/mosaic.jar
+aws s3 cp target/scala-2.10/... s3://oam-server-tiler/emr/mosaic.jar
 ```
 
 ## Running
