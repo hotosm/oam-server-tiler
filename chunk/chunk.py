@@ -15,7 +15,7 @@ import rasterio
 from rasterio import transform
 from rasterio import crs
 from rasterio import warp
-from rasterio.warp import (reproject, RESAMPLING, calculate_default_transform)
+from rasterio.warp import (reproject, calculate_default_transform)
 from rasterio._io import virtual_file_to_buffer
 
 from affine import Affine
@@ -282,7 +282,8 @@ def process_chunk_task(task):
                     destination=warped[bidx - 1],
                     dst_transform=meta["transform"],
                     dst_crs=meta["crs"],
-                    resampling=RESAMPLING.bilinear
+                    # NOTE: not using rasterio.warp.RESAMPLING because it breaks pyspark-1.5.x
+                    resampling=1, # bilinear
                 )
 
             # check for chunks containing only zero values
