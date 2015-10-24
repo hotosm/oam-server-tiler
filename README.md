@@ -2,6 +2,8 @@
 
 This code is meant to run through Amazon EMR as a two step process for tiling.
 
+To run it as a standalone process, see [`run-emr.sh`](#run-emrsh) below.
+
 ### Chunk
 
 The `chunk.py` is a pyspark application that runs code which takes a set of images and converts them into 1024 by 1024 tiled GeoTiffs
@@ -111,7 +113,15 @@ the cluster (one executor per core per worker node). `2304m` is the amount of me
 Also, you'll need to set `REQUEST_URI` and `WORKSPACE_URI`, which set the request for the chunk step and the location of the workspace for
 the second step, respectively.
 
-#### How to connect to UI's in EMR
+#### run-emr.sh
+
+This is how to run a one-off, standalone tiling job. To change the number of
+nodes in the cluster, the spot instance bid price, instance types, job id, and (most
+importantly) input imagery, edit it before running. To see status, use the EMR
+console. When steps are complete, imagery will have been pushed to the path
+specified in `target` (in the job configuration).
+
+#### How to connect to UIs in EMR
 
 Follow these instructions: Namely set up the ssh tunnel using: http://docs.aws.amazon.com/ElasticMapReduce/latest/DeveloperGuide/emr-ssh-tunnel.html
 
