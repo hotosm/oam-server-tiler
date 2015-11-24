@@ -36,7 +36,7 @@ EOF
 CLUSTER_ID=$(aws emr create-cluster \
   --name "OAM Tiler - ${JOB_ID}" \
   --log-uri s3://oam-server-tiler/emr/logs/ \
-  --release-label emr-4.1.0 \
+  --release-label emr-4.2.0 \
   --use-default-roles \
   --auto-terminate \
   --ec2-attributes KeyName=oam-mojodna \
@@ -45,7 +45,7 @@ CLUSTER_ID=$(aws emr create-cluster \
     Name=Master,InstanceCount=1,InstanceGroupType=MASTER,InstanceType=$MASTER_INSTANCE_TYPE \
     Name=ReservedWorkers,InstanceCount=$WORKER_COUNT,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE_TYPE \
     Name=SpotWorkers,InstanceCount=$SPOT_WORKER_COUNT,BidPrice=$SPOT_WORKER_PRICE,InstanceGroupType=TASK,InstanceType=$WORKER_INSTANCE_TYPE \
-  --bootstrap-action Path=s3://oam-server-tiler/emr/bootstrap.sh \
+  --bootstrap-action Path=s3://oam-server-tiler/emr/bootstrap-v0.2.0.sh \
   --configurations http://s3.amazonaws.com/oam-server-tiler/emr/configurations.json \
   --steps \
     Name=CHUNK,ActionOnFailure=TERMINATE_CLUSTER,Type=Spark,Args=[--deploy-mode,cluster,--driver-memory,$DRIVER_MEMORY,--num-executors,$NUM_EXECUTORS,--executor-memory,$EXECUTOR_MEMORY,--executor-cores,$EXECUTOR_CORES,s3://oam-server-tiler/emr/chunk.py,$REQUEST_URI] \
