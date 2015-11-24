@@ -11,7 +11,7 @@ SPOT_WORKER_COUNT=8
 aws emr create-cluster \
   --name "OAM Tiler" \
   --log-uri s3://oam-server-tiler/emr/logs/ \
-  --release-label emr-4.1.0 \
+  --release-label emr-4.2.0 \
   --use-default-roles \
   --ec2-attributes KeyName=oam-mojodna \
   --applications Name=Spark \
@@ -19,5 +19,5 @@ aws emr create-cluster \
     Name=Master,InstanceCount=1,InstanceGroupType=MASTER,InstanceType=$MASTER_INSTANCE \
     Name=ReservedWorkers,InstanceCount=$WORKER_COUNT,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE \
     Name=SpotWorkers,InstanceCount=$SPOT_WORKER_COUNT,BidPrice=$SPOT_WORKER_PRICE,InstanceGroupType=CORE,InstanceType=$WORKER_INSTANCE \
-  --bootstrap-action Path=s3://oam-server-tiler/emr/bootstrap.sh \
+  --bootstrap-action Path=s3://oam-server-tiler/emr/bootstrap-v0.2.0.sh \
   --configurations s3://oam-server-tiler/emr/configurations.js
