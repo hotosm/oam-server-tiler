@@ -1,12 +1,12 @@
-CLUSTER_ID=j-2R48YBD6AJTWQ
+CLUSTER_ID=j-38B7UZSX1K8Z3
 
 DRIVER_MEMORY=2g
 NUM_EXECUTORS=40
 EXECUTOR_MEMORY=2304m
 EXECUTOR_CORES=1
 
-REQUEST_URI=s3://workspace-oam-hotosm-org/test-req-partial.json
-WORKSPACE_URI=s3://workspace-oam-hotosm-org/emr-test-job-partial
+REQUEST_URI=s3://oam-server-tiler/testfiles/test-req-partial.json
+WORKSPACE_URI=s3://oam-server-tiler/workspace/emr-test-job-partial
 
 aws emr add-steps \
   --cluster-id $CLUSTER_ID \

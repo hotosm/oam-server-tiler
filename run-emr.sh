@@ -15,10 +15,10 @@ NUM_EXECUTORS=40
 EXECUTOR_MEMORY=2304m
 EXECUTOR_CORES=1
 
-JOB_ID=20151012-1
+JOB_ID=rob-test-jan-2016
 
-REQUEST_URI=s3://workspace-oam-hotosm-org/test-req-partial-${JOB_ID}.json
-WORKSPACE_URI=s3://workspace-oam-hotosm-org/emr-test-job-partial-${JOB_ID}
+REQUEST_URI=s3://oam-server-tiler/test-files/test-req-partial-${JOB_ID}.json
+WORKSPACE_URI=s3://oam-server-tiler/workspace/emr-test-job-partial-${JOB_ID}
 
 # write job configuration to S3 as REQUEST_URI
 cat <<EOF | aws s3 cp - $REQUEST_URI
@@ -26,8 +26,7 @@ cat <<EOF | aws s3 cp - $REQUEST_URI
     "jobId": "${JOB_ID}",
     "target": "s3://oam-tiles/${JOB_ID}",
     "images": [
-        "http://hotosm-oam.s3.amazonaws.com/356f564e3a0dc9d15553c17cf4583f21-12.tif",
-        "http://oin-astrodigital.s3.amazonaws.com/LC81420412015111LGN00_bands_432.TIF"
+        "s3://hotosm-oam/uploads/2016-01-05/568b113a63ebf4bc00074e67/scene/0/scene-0-image-0-Nick-Do-transparent_block_alpha_mosaic_group1.tif"
     ],
     "workspace": "${WORKSPACE_URI}"
 }

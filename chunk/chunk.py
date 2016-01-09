@@ -1,4 +1,4 @@
-import os, sys, shutil
+import os, sys, shutil, traceback
 import errno
 import json
 import itertools
@@ -7,8 +7,10 @@ import multiprocessing
 import tempfile
 from urlparse import urlparse
 from collections import namedtuple
+from subprocess import call
 
 import boto3
+from boto3.s3.transfer import S3Transfer
 import mercantile
 import numpy
 import rasterio
@@ -42,11 +44,54 @@ def notify_start(jobId):
 def notify_success(jobId):
     notify({ "jobId": jobId, "stage": "chunk", "status": "FINISHED" })
 
-def notify_failure(jobId, error_message):
-    notify({ "jobId": jobId, "stage": "chunk", "status": "FAILED", "error":  error_message })
+def notify_failure(jobId, error_message, stack):
+    notify({ "jobId": jobId, "stage": "chunk", "status": "FAILED", "error":  error_message, "stack": stack })
+
+
+def create_tmp_directory(prefix):
+    tmp = tempfile.mktemp(prefix=prefix, dir=os.path.join(os.environ['PWD'], "chunk-temp"))
+    return makedirs_p(tmp)
+
+def makedirs_p(d):
+    if not os.path.exists(d):
+        os.makedirs(d)
+    return d
+
+def get_local_copy(uri, local_dir):
+    parsed = urlparse(uri)
+    local_path = tempfile.mktemp(dir=local_dir)
+    if parsed.scheme == "s3":
+        cmd = ["aws", "s3", "cp",uri, local_path]
+    elif parsed.scheme == "http":
+        cmd = ["wget", "-O", local_path, uri]
+    else:
+        cmd = ["cp", uri, local_path]
+
+    call(cmd)
+
+    return local_path
+
+def upload_to_working(local_src, dest):
+    parsed = urlparse(dest)
+
+    if parsed.scheme == "s3":
+        cmd = ["aws", "s3", "cp", 
+               "--acl", "public-read", 
+               "--content-type", "image/tiff",
+               local_src, dest]
+    else:
+        d = os.path.dirname(dest)
+        if not os.path.exists(d):
+            os.makedirs(d)
+        cmd = ["cp", local_src, dest]
+
+    call(cmd)
+
+    return dest
 
 def get_filename(uri):
-    return os.path.splitext(os.path.basename(uri))[0]
+    p = urlparse(uri)
+    return os.path.splitext(os.path.join(p.netloc, p.path[1:]))[0]
 
 def mkdir_p(dir):
     try:
@@ -101,65 +146,74 @@ def write_bytes_to_target(target_uri, contents):
         with open(output_path, "w") as f:
             f.write(contents)
 
-def create_uri_sets(images, workspace_uri):
-    result = []
-    workspace_keys = []
-    for (order, uri) in enumerate(images):
-        source_uri = vsi_curlify(uri)
+def copy_tiles_to_workspace(source_uri, order, workspace_uri):
+    # Download the file and retile
+    results = []
+    workspace_prefix = get_filename(source_uri)
+    
+    local_dir = create_tmp_directory(workspace_prefix)
+    try :
+        MAX_HEIGHT = 1024 * 2
+        MAX_WIDTH = 1024 * 2
 
-        # Get the workspace 
-        workspace_key = get_filename(uri)
-        i = 1
-        while workspace_key in workspace_keys:
-            if i > 2:
-                workspace_key = workspace_key[:-2] + "-" + str(i)
-            else:
-                workspace_key = workspace_key + "-" + str(i)
-            i + 1
-        workspace_keys.append(workspace_key)
-        
-        workspace_target = os.path.join(workspace_uri, workspace_key + "-workingcopy.tif")
-        workspace_source_uri = vsi_curlify(workspace_target)
+        local_path = get_local_copy(source_uri, local_dir)
 
-        image_folder = os.path.join(workspace_uri, workspace_key)
-        
-        uri_set = UriSet(source_uri = source_uri,
-                         workspace_target = workspace_target,
-                         workspace_source_uri = workspace_source_uri,
-                         image_folder = image_folder,
-                         order = order)
-                         
-        result.append(uri_set)
+        gdal_options = ["-of", "GTiff",
+                        "-co", "compress=lzw",
+                        "-co", "predictor=2",
+                        "-co", "tiled=yes",
+                        "-co", "blockxsize=512",
+                        "-co", "blockysize=512"]
 
-    return result
+        # reproject
+        reprojected_path = local_path + "-reprojected.tif"
+        cmd = ["gdalwarp"] + gdal_options + ["-t_srs", "EPSG:3857",
+                                             "-co", "BIGTIFF=YES", # Handle giant TIFFs.
+                                             local_path,
+                                             reprojected_path]
+        call(cmd)
 
-def copy_to_workspace(source_uri, dest_uri):
-    """
-    Translates an image from a URI to a compressed, tiled GeoTIFF version in the workspace
-    """
+        # retile
+        tiled_dir = local_path + "-tiled"
+        os.mkdir(tiled_dir)
+        cmd = ["gdal_retile.py"] + gdal_options + ["-ps", 
+                                                   str(MAX_WIDTH), 
+                                                   str(MAX_HEIGHT),
+                                                   "-targetDir",
+                                                   tiled_dir,
+                                                   reprojected_path]
+        call(cmd)
 
-    creation_options = {
-        "driver": "GTiff",
-        "tiled": True,
-        "compress": "lzw",
-        "predictor":   2,
-        "sparse_ok": True,
-        "blockxsize": 512, 
-        "blockysize": 512
-    }
+        tile_filenames = os.listdir(tiled_dir)
 
-    with rasterio.open(source_uri, "r") as src:
-        meta = src.meta.copy()
-        meta.update(creation_options)
+        workspace_basename = os.path.basename(workspace_prefix)
+        reprojected_path_name = os.path.splitext(os.path.basename(reprojected_path))[0]
 
-        tmp_path = "/vsimem/" + get_filename(dest_uri)
+        # upload
 
-        with rasterio.open(tmp_path, "w", **meta) as tmp:
-            tmp.write(src.read())
+        for tile_filename in tile_filenames:
+            workspace_key = os.path.splitext(os.path.join(workspace_prefix, tile_filename.replace(reprojected_path_name, workspace_basename)))[0]
+            workspace_target = os.path.join(workspace_uri, workspace_key + "-working.tif")
+            upload_to_working(os.path.join(tiled_dir, tile_filename), workspace_target)
 
-    contents = bytearray(virtual_file_to_buffer(tmp_path))
+            workspace_source_uri = vsi_curlify(workspace_target)
 
-    write_bytes_to_target(dest_uri, contents)
+            image_folder = os.path.join(workspace_uri, workspace_key)
+
+            uri_set = UriSet(source_uri = source_uri,
+                             workspace_target = workspace_target,
+                             workspace_source_uri = workspace_source_uri,
+                             image_folder = image_folder,
+                             order = order)
+
+            results.append(uri_set)
+
+        shutil.rmtree(local_dir)
+    finally:
+        if local_dir:
+            shutil.rmtree(local_dir, ignore_errors=True)
+
+    return results
 
 def get_zoom(resolution, tile_dim):
     zoom = math.log((2 * math.pi * 6378137) / (resolution * tile_dim)) / math.log(2)
@@ -250,8 +304,6 @@ def process_chunk_task(task):
     Returns the extent of the output raster.
     """
 
-    from rasterio.warp import RESAMPLING
-
     creation_options = {
         "driver": "GTiff",
         "crs": "EPSG:3857",
@@ -284,12 +336,12 @@ def process_chunk_task(task):
                     destination=warped[bidx - 1],
                     dst_transform=meta["transform"],
                     dst_crs=meta["crs"],
-                    resampling=RESAMPLING.bilinear,
+                    # resampling=RESAMPLING.bilinear
                 )
 
             # check for chunks containing only zero values
             if not any(map(lambda b: b.any(), warped)):
-                return
+                return False
 
             # write out our warped data to the vsimem raster
             for bidx in src.indexes:
@@ -298,6 +350,7 @@ def process_chunk_task(task):
     contents = bytearray(virtual_file_to_buffer(tmp_path))
 
     write_bytes_to_target(task.target, contents)
+    return True
 
 def construct_image_info(image_source):
     extent = { "xmin": image_source.ll_bounds[0], "ymin": image_source.ll_bounds[1],
@@ -358,11 +411,15 @@ def run_spark_job(tile_dim):
         notify_start(jobId)
 
     try:
-        uri_sets = create_uri_sets(source_uris, workspace)
-        image_count = len(uri_sets)
-
         conf = SparkConf().setAppName(APP_NAME)
         sc = SparkContext(conf=conf)
+
+
+        for x in os.environ:
+            print "%s: %s" % (x, os.environ[x])
+
+        uri_sets = sc.parallelize(enumerate(source_uris)).flatMap(lambda (o, i): copy_tiles_to_workspace(i, o, workspace))
+        source_tile_count = uri_sets.cache().count()
 
         image_source_accumulator = sc.accumulator([], ImageSourceAccumulatorParam())
 
@@ -371,20 +428,15 @@ def run_spark_job(tile_dim):
             acc += [image_source]
             return image_source
 
-        def uri_set_copy(uri_set):
-            copy_to_workspace(uri_set.source_uri, uri_set.workspace_target)
-            return uri_set
-
-        uri_set_rdd = sc.parallelize(uri_sets, image_count).map(uri_set_copy)
-        image_sources = uri_set_rdd.map(lambda uri_set: create_image_sources(uri_set, image_source_accumulator))
+        image_sources = uri_sets.repartition(source_tile_count).map(lambda uri_set: create_image_sources(uri_set, image_source_accumulator))
         chunk_tasks = image_sources.flatMap(lambda image_source: generate_chunk_tasks(image_source, tile_dim))
         chunks_count = chunk_tasks.cache().count()
-        numPartitions = max(chunks_count / 10, min(50, image_count))
+        numPartitions = max(chunks_count / 10, min(50, source_tile_count))
 
-        chunk_tasks.repartition(numPartitions).foreach(process_chunk_task)
+        valid_source_uris = set(chunk_tasks.repartition(numPartitions).filter(process_chunk_task).map(lambda task: task.source_uri).distinct().collect())
 
-        image_sources = image_source_accumulator.value
-        print "Processed %d images into %d chunks" % (len(image_sources), chunks_count)
+        image_sources = filter(lambda ims: ims.source_uri in valid_source_uris, image_source_accumulator.value)
+        print "Processed %d image tiles into approximately %d chunks" % (len(image_sources), chunks_count)
 
         input_info = map(construct_image_info, sorted(image_sources, key=lambda im: im.order))
 
@@ -409,7 +461,7 @@ def run_spark_job(tile_dim):
             client.put_object(Bucket=bucket, Key=key, Body=json.dumps(result))
     except Exception, e:
         if publish_notifications:
-            notify_failure(jobId, "%s: %s" % (type(e).__name__, e.message))
+            notify_failure(jobId, "%s: %s" % (type(e).__name__, e.message), traceback.format_exc(1000))
         raise
 
     if publish_notifications:

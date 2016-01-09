@@ -78,9 +78,6 @@ object ZoomUp {
 
           for((thisKey, thisImage) <- seqTiles) {
             val thisExtent = TileMath.getExtent(thisZoom, thisKey.col, thisKey.row)
-            if(thisExtent.width  < 0.001) {
-              sys.error(s"THIS ONE $thisExtent $thisZoom $thisKey")
-            }
 
             ZoomUp.mergeImage(nextImage, thisImage.image, nextExtent, thisExtent)
             nextOrder = nextOrder.merge(nextExtent, thisExtent, thisImage.order)
