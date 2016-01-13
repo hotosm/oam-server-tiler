@@ -13,7 +13,10 @@ case class JobRequest(id: String, target: String, tileSize: Int, inputImageDefin
         val reader =
           new java.net.URI(imagesFolder).getScheme match {
             case "s3" => new S3TileServiceReader[MultiBandTile](imagesFolder)
-            case null => new FileTileServiceReader[MultiBandTile](imagesFolder)
+            case null => 
+              if(!new java.io.File(imagesFolder).exists)
+                sys.error(s"Directory $imagesFolder does not exist.")
+              new FileTileServiceReader[MultiBandTile](imagesFolder)
           }
 
         val rdd = reader.read(zoom)
@@ -37,6 +40,7 @@ case class JobRequest(id: String, target: String, tileSize: Int, inputImageDefin
               .flatMap { case (key, image) =>
                 InputImageRDD.split(key, image, tilesAcross)
               }
+
           InputImageRDD(priority, adjustedZoom, adjustedGridBounds, images)
         }
       }

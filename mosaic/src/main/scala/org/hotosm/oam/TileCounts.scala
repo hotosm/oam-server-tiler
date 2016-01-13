@@ -12,6 +12,7 @@ trait TileCounts {
 
 object TileCounts {
   def apply(zoomsToGridBounds: Seq[(Int, GridBounds)]): TileCounts = {
+    val imageCount = zoomsToGridBounds.size
     val zoomMap =
       zoomsToGridBounds
         .foldLeft(Map[Int, Seq[GridBounds]]()) { (acc, tup) =>
@@ -52,8 +53,8 @@ object TileCounts {
 
           (
             distinctBounds,
-            mergedCounts + ((zoom, distinctBounds.map(_.size).sum)),
-            unmergedCounts + ((zoom, bounds.map(_.size).sum))
+            mergedCounts + ((zoom, distinctBounds.map(_.size).sum * imageCount)),
+            unmergedCounts + ((zoom, bounds.map(_.size).sum * imageCount))
           )
         }
 

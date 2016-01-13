@@ -57,15 +57,17 @@ object Tiler {
     val zoomsToTiles: Map[Int, RDD[(SpatialKey, OrderedImage)]] =
       inputImages
         .map { case inputImage => (inputImage.zoom, inputImage.orderedImages) }
-        .foldLeft(Map[Int, RDD[(SpatialKey, OrderedImage)]]()) { (acc, tup) =>
+        .foldLeft(Map[Int, Seq[RDD[(SpatialKey, OrderedImage)]]]()) { (acc, tup) =>
           val (zoom, theseTiles) = tup
           val tiles =
             acc.get(zoom) match {
-              case Some(t) => t.union(theseTiles)
-              case None => theseTiles
+              case Some(t) => t ++ Seq(theseTiles)
+              case None => Seq(theseTiles)
             }
           acc + ((zoom, tiles))
         }
+        .map { case (zoom, rdds) => (zoom, sc.union(rdds)) }
+        .toMap
 
     val sortedZooms =
       (zoomsToTiles.keys.toSeq :+ 1)

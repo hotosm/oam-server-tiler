@@ -2,8 +2,7 @@
   "jobId" : "test-job",
   "target" : "/Users/rob/proj/oam/data/results",
   "images" : [
-    "/Users/rob/proj/oam/data/raw/356f564e3a0dc9d15553c17cf4583f21-5.tif",
-    "/Users/rob/proj/oam/data/raw/LC81410412014277LGN00_bands_432.TIF"
+    "/Users/rob/proj/oam/data/upload-problem/scene-0-image-0-Nick-Do-transparent_block_alpha_mosaic_group1.tif"
   ],
   "workspace" : "/Users/rob/proj/oam/data/workspace"
 }
