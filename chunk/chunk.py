@@ -10,7 +10,6 @@ from collections import namedtuple
 from subprocess import call
 
 import boto3
-from boto3.s3.transfer import S3Transfer
 import mercantile
 import numpy
 import rasterio
@@ -61,7 +60,7 @@ def get_local_copy(uri, local_dir):
     parsed = urlparse(uri)
     local_path = tempfile.mktemp(dir=local_dir)
     if parsed.scheme == "s3":
-        cmd = ["aws", "s3", "cp",uri, local_path]
+        cmd = ["aws", "s3", "cp", uri, local_path]
     elif parsed.scheme == "http":
         cmd = ["wget", "-O", local_path, uri]
     else:
@@ -116,7 +115,7 @@ def vsi_curlify(uri):
     else:
         if parsed.scheme == "s3":
             result_uri = "/vsicurl/http://%s.s3.amazonaws.com%s" % (parsed.netloc, parsed.path)
-        elif parsed.scheme == "http":
+        elif parsed.scheme.startswith("http"):
             result_uri = "/vsicurl/%s" % uri
         else:
             raise Exception("Unsupported scheme: %s" % parsed.schem)
