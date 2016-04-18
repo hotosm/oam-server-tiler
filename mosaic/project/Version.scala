@@ -1,5 +1,5 @@
 object Version {
-  val tiler       = "0.1.0"
+  val tiler       = "0.1.1"
   val scala       = "2.10.5"
   val spark       = "1.4.1"
 

@@ -36,7 +36,7 @@ object Status {
     sendNotification(s"""{ "jobId": "$jobId", "stage": "mosaic", "status": "FAILED", "error": "$exception" }""")
 
   def notifySuccess(jobId: String, target: String, sourceUris: Seq[String]): Unit = {
-    val csv = sourceUris.map { uri => s""""$uri"""" }.mkString(",")
+    val csv = sourceUris.distinct.map { uri => s""""$uri"""" }.mkString(",")
     val sourceUrisJson = s"[$csv]"
     sendNotification(s"""{ "jobId": "$jobId", "stage": "mosaic", "status": "FINISHED", "target": "$target", "images": $sourceUrisJson }""")
   }

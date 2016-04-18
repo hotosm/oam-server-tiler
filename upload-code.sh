@@ -1,5 +1,5 @@
 TARGET=s3://oam-server-tiler/emr
-VERSION=0.1.0
+VERSION=0.1.1
 
 cd mosaic && ./sbt assembly
 aws s3 cp chunk/chunk.py $TARGET/chunk-${VERSION}.py
