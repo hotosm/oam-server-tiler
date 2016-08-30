@@ -118,7 +118,7 @@ def vsi_curlify(uri):
         elif parsed.scheme.startswith("http"):
             result_uri = "/vsicurl/%s" % uri
         else:
-            raise Exception("Unsupported scheme: %s" % parsed.schem)
+            raise Exception("Unsupported scheme: %s" % parsed.scheme)
 
     return result_uri
 
