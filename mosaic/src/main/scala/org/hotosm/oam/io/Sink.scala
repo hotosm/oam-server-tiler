@@ -53,7 +53,7 @@ class S3Sink(bucket: String, s3Key: String) extends Sink {
     var i = 0
     while(!break && i < len) { 
       if(bytes(i) != z) {
-        client.putBytes(bucket, tileKey, bytes)
+        client.putBytes(bucket, tileKey, bytes, "image/png")
         break = true
       }
     }

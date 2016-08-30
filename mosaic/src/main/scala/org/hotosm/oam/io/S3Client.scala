@@ -62,9 +62,10 @@ class S3Client(credentials: AWSCredentials, config: ClientConfiguration) {
     }
   }
 
-  def putBytes(bucket: String, key: String, bytes: Array[Byte]): Unit = {
+  def putBytes(bucket: String, key: String, bytes: Array[Byte], contentType: String = null): Unit = {
     val metadata = new ObjectMetadata()
     metadata.setContentLength(bytes.length)
+    metadata.setContentType(contentType)
     val stream = new ByteArrayInputStream(bytes)
     val request = new PutObjectRequest(bucket, key, stream, metadata)
     s3client.putObject(request)
