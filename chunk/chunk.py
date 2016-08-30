@@ -168,6 +168,7 @@ def copy_tiles_to_workspace(source_uri, order, workspace_uri):
         reprojected_path = local_path + "-reprojected.tif"
         cmd = ["gdalwarp"] + gdal_options + ["-t_srs", "EPSG:3857",
                                              "-co", "BIGTIFF=YES", # Handle giant TIFFs.
+                                             "-dstalpha",
                                              local_path,
                                              reprojected_path]
         call(cmd)

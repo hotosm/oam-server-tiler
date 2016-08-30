@@ -12,7 +12,7 @@ trait Sink extends Function3[Int, SpatialKey, MultiBandTile, Unit] with Serializ
         val cr = if(isNoData(r)) 128 else r.toByte & 0xFF
         val cg = if(isNoData(g)) 128 else g.toByte & 0xFF
         val cb = if(isNoData(b)) 128 else b.toByte & 0xFF
-        if(cr == 0 && cg == 0 && cb == 0)
+        if(isNoData(r) && isNoData(g) && isNoData(b))
           0
         else
           (cr << 24) | (cg << 16) | (cb << 8) | 0xFF
